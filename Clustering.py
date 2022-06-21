@@ -1,4 +1,5 @@
 import numpy.linalg as LA
+from scipy.optimize import minimize
 from math import inf
 from sklearn.preprocessing import normalize
 from pyclustering.cluster.kmedians import kmedians
@@ -94,7 +95,8 @@ def init_spectral(env, trajectories):
                 transition_matrix_a[x, y] = count_transition(x, a, y, trajectories)
         # Trimming!
         contexts_ordered = np.argsort(visitations_a)
-        num_trimmed = int(np.floor(n * np.exp(-T * H / (n * A) * np.log(T * H / (n * A)))))
+        ratio = (T*H)/(n*A)
+        num_trimmed = int(np.floor(n * np.exp(- ratio * np.log(ratio))))
         if num_trimmed > 0:
             contexts_trimmed = contexts_ordered[-num_trimmed:]
             for x, y in zip(contexts_trimmed, contexts_trimmed):
@@ -130,52 +132,63 @@ def init_spectral(env, trajectories):
 
 
 def likelihood_improvement(env, trajectories, f_1):
+    # likelihood_improvement
     n, S, A, H = env.n, env.S, env.A, env.H
     T = len(trajectories)
 
-    f = f_1
-    for _ in tqdm(range(int(np.floor(np.log(n * A))))):
+    f_final = f_1
+    num_iter = int(np.floor(np.log(n * A)))
+
+    for _ in tqdm(range(num_iter)):
         # estimated latent transition matrices
         Ns = [np.zeros((S, S)) for _ in range(A)]
         for a in range(A):
             for s in range(S):
                 for k in range(S):
-                    Ns[a][s][k] = count_transition_latent(s, a, k, trajectories, f)
+                    Ns[a][s][k] = count_transition_latent(s, a, k, trajectories, f_final)
 
         # likelihood improvement
+        f_ = {}
         for x in range(n):
             likelihoods = []
             for j in range(S):
+                # number of visitations to j
+                N2 = 0
+                for a in range(A):
+                    tmp = np.sum(Ns[a], axis=0)
+                    N2 += tmp[j]
                 for a in range(A):
                     likelihood = 0
                     # number of visitations from (j, a)
                     tmp = np.sum(Ns[a], axis=1)
                     N1 = tmp[j]
-                    # number of visitations to j
-                    N2 = 0
-                    for a in range(A):
-                        tmp = np.sum(Ns[a], axis=0)
-                        N2 += tmp[j]
-                    for s in range(S):
-                        # estimate of p and p_bwd
-                        p_estimated = Ns[a][j][s] / N1
-                        p_bwd_estimated = Ns[a][s][j] / N2
-                        # number of visitations (x, a) -> s
-                        N3 = count_transition_mixed1(x, a, s, trajectories, f)
-                        # number of visitations (s, a) -> x
-                        N4 = count_transition_mixed2(s, a, x, trajectories, f)
+                    if N1 == 0 or N2 == 0:
+                        likelihood = -inf
+                    else:
+                        for s in range(S):
+                            # estimate of p and p_bwd
+                            p_estimated = Ns[a][j][s] / N1  # ((j, a) -> s) / ((j, a) -> X)
+                            p_bwd_estimated = Ns[a][s][j] / N2  # (j <- (s, a)) / (j <- X)
+                            if p_estimated == 0 or p_bwd_estimated == 0:
+                                likelihood = -inf
+                                continue
+                            # number of visitations (x, a) -> s
+                            N3 = count_transition_mixed1(x, a, s, trajectories, f_final)
+                            # number of visitations (s, a) -> x
+                            N4 = count_transition_mixed2(s, a, x, trajectories, f_final)
 
-                        # compute likelihood
-                        likelihood += (N3 * np.log(p_estimated)) + (N4 * np.log(p_bwd_estimated))
+                            # compute likelihood
+                            likelihood += (N3 * np.log(p_estimated)) + (N4 * np.log(p_bwd_estimated))
                 likelihoods.append(likelihood)
 
             # new cluster
-            f[x] = np.argmax(likelihoods)
-    return f
+            f_[x] = np.argmax(likelihoods)
+        f_final = f_
+    return f_final
 
 
 if __name__ == '__main__':
-    T = 20
+    T = 30
     env = Synthetic()
     # true clusters
     f = {}

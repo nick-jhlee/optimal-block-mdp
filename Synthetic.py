@@ -54,19 +54,20 @@ class Synthetic(gym.Env):
         # Generate latent transition probability matrix for each action!
         # All of them satisfies the regularity condition
         self.ps = []
-        # seeding_p = np.random.RandomState(seed=100)  # "local" seeding to fix the transition probability matrices
+        seeding_p = np.random.RandomState(seed=10)  # "local" seeding to fix the transition probability matrices
         for a in range(self.A):
-            p = np.random.rand(self.S, self.S)
-            # p = seeding_p.rand(self.S, self.S)
+            # p = np.random.rand(self.S, self.S)
+            p = seeding_p.rand(self.S, self.S)
             p /= p.sum(axis=1)[:, None]
             self.ps.append(p)
 
         # Generate context emission probability for each cluster!
         # All of them satisfies the regularity condition
         self.qs = []
-        # seeding_q = np.random.RandomState(seed=1000)
+        seeding_q = np.random.RandomState(seed=20)
         for s in range(self.S):
-            q = np.random.rand(self.cluster_sizes[s])
+            q = np.ones(self.cluster_sizes[s])
+            # q = np.random.rand(self.cluster_sizes[s])
             # q = seeding_q.rand(self.cluster_sizes[s])
             q /= sum(q)
             self.qs.append(q)
