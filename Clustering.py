@@ -13,15 +13,14 @@ def count_transition(x, a, y, trajectories):
     cnt = 0
     H = len(trajectories[0])
     for trajectory in trajectories:
-        cnt += sum(1 for i in range(H-2) if i % 3 == 0 and trajectory[i:i + 3] == [x, a, y])
+        cnt += sum(1 for i in range(H - 2) if i % 2 == 0 and trajectory[i:i + 3] == [x, a, y])
     return cnt
-
 
 def count_visitation(x, a, trajectories):
     cnt = 0
     H = len(trajectories[0])
     for trajectory in trajectories:
-        cnt += sum(1 for i in range(H-1) if i % 2 == 0 and trajectory[i:i + 2] == [x, a])
+        cnt += sum(1 for i in range(H - 1) if i % 2 == 0 and trajectory[i:i + 2] == [x, a])
     return cnt
 
 
@@ -29,7 +28,7 @@ def count_transition_latent(s, a, v, trajectories, f):
     cnt = 0
     H = len(trajectories[0])
     for trajectory in trajectories:
-        cnt += sum(1 for i in range(H-2) if i % 2 == 0 and f[trajectory[i]] == s and trajectory[i + 1] == a and f[
+        cnt += sum(1 for i in range(H - 2) if i % 2 == 0 and f[trajectory[i]] == s and trajectory[i + 1] == a and f[
             trajectory[i + 2]] == v)
     return cnt
 
@@ -38,7 +37,7 @@ def count_transition_mixed1(x, a, s, trajectories, f):
     cnt = 0
     H = len(trajectories[0])
     for trajectory in trajectories:
-        cnt += sum(1 for i in range(H-2) if i % 2 == 0 and trajectory[i] == x and trajectory[i + 1] == a and f[
+        cnt += sum(1 for i in range(H - 2) if i % 2 == 0 and trajectory[i] == x and trajectory[i + 1] == a and f[
             trajectory[i + 2]] == s)
     return cnt
 
@@ -47,7 +46,7 @@ def count_transition_mixed2(s, a, x, trajectories, f):
     cnt = 0
     H = len(trajectories[0])
     for trajectory in trajectories:
-        cnt += sum(1 for i in range(H-2) if
+        cnt += sum(1 for i in range(H - 2) if
                    i % 2 == 0 and f[trajectory[i]] == s and trajectory[i + 1] == a and trajectory[i + 2] == x)
     return cnt
 
@@ -79,11 +78,13 @@ def error_rate(f, f_1, n, S):
     return error / n
 
 
+
 def init_spectral(env, trajectories):
     n, S, A, H = env.n, env.S, env.A, env.H
     T = len(trajectories)
 
     # Collect trimmed, low-rank approx, empirical transition matrices
+    transition_matrices_before = []
     transition_matrices = []
     for a in range(A):
         # Collect empirical transition matrices
@@ -94,14 +95,15 @@ def init_spectral(env, trajectories):
             for y in range(n):
                 transition_matrix_a[x, y] = count_transition(x, a, y, trajectories)
         # Trimming!
-        contexts_ordered = np.argsort(visitations_a)
-        ratio = (T*H)/(n*A)
+        ratio = (T * H) / (n * A)
         num_trimmed = int(np.floor(n * np.exp(- ratio * np.log(ratio))))
         if num_trimmed > 0:
+            contexts_ordered = np.argsort(visitations_a)
             contexts_trimmed = contexts_ordered[-num_trimmed:]
             for x, y in zip(contexts_trimmed, contexts_trimmed):
                 transition_matrix_a[x][y] = 0
 
+        transition_matrices_before.append(transition_matrix_a)
         # Low-rank approximation
         transition_matrices.append(low_rank(transition_matrix_a, r=S))
 
@@ -131,13 +133,15 @@ def init_spectral(env, trajectories):
     return f_1
 
 
-def likelihood_improvement(env, trajectories, f_1):
+def likelihood_improvement(env, trajectories, f_1, f, num_iter=None):
     # likelihood_improvement
     n, S, A, H = env.n, env.S, env.A, env.H
-    T = len(trajectories)
 
     f_final = f_1
-    num_iter = int(np.floor(np.log(n * A)))
+    if num_iter is None:
+        num_iter = int(np.floor(np.log(n * A)))
+    errors = []
+    fs = []
 
     for _ in tqdm(range(num_iter)):
         # estimated latent transition matrices
@@ -152,16 +156,17 @@ def likelihood_improvement(env, trajectories, f_1):
         for x in range(n):
             likelihoods = []
             for j in range(S):
-                # number of visitations to j
+                # N2 = number of visitations to j
                 N2 = 0
                 for a in range(A):
                     tmp = np.sum(Ns[a], axis=0)
                     N2 += tmp[j]
+                likelihood = 0
                 for a in range(A):
-                    likelihood = 0
-                    # number of visitations from (j, a)
+                    # N1 = number of visitations from (j, a)
                     tmp = np.sum(Ns[a], axis=1)
                     N1 = tmp[j]
+                    # degenerate case
                     if N1 == 0 or N2 == 0:
                         likelihood = -inf
                     else:
@@ -180,16 +185,27 @@ def likelihood_improvement(env, trajectories, f_1):
                             # compute likelihood
                             likelihood += (N3 * np.log(p_estimated)) + (N4 * np.log(p_bwd_estimated))
                 likelihoods.append(likelihood)
-
             # new cluster
+            # print(likelihoods)
             f_[x] = np.argmax(likelihoods)
+            fs.append(f_)
         f_final = f_
-    return f_final
+        errors.append(error_rate(f, f_final, env.n, env.S))
+
+    return f_final, errors
 
 
 if __name__ == '__main__':
-    T = 30
-    env = Synthetic()
+    n = 100
+
+    A = 2
+    H = 100
+    T = int(np.ceil(n * A * (np.log(n * A) ** 1.1)) / H)
+
+    env_config = {'n': n, 'H': H, 'S:': 2, 'A': A,
+                  'ps': [np.array([[3 / 4, 1 / 4], [1 / 4, 3 / 4]]), np.array([[1 / 2, 1 / 2], [1 / 2, 1 / 2]])],
+                  'qs': 'uniform'}
+    env = Synthetic(env_config)
     # true clusters
     f = {}
     for s in range(env.S):
@@ -205,6 +221,7 @@ if __name__ == '__main__':
     print("Error rate after initial clustering is ", init_err_rate)
 
     # likelihood_improvement
-    f_final = likelihood_improvement(env, trajectories, f_1)
-    final_err_rate = error_rate(f, f_1, env.n, env.S)
-    print("Final error rate is ", final_err_rate)
+    # f_final, errors = likelihood_improvement(env, trajectories, f_1, f, num_iter=10)
+    f_final, errors = likelihood_improvement(env, trajectories, f_1, f, num_iter=None)
+    print("Final error rate is ", errors[-1])
+    print("Errors along the improvement steps: ", errors)

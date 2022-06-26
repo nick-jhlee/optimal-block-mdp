@@ -17,13 +17,13 @@ class Synthetic(gym.Env):
         if 'H' in params:
             self.H = int(env_config['H'])
         else:
-            self.H = 100
+            self.H = 50
 
         # Context(Observation) space
         if 'n' in params:
             self.n = int(env_config['n'])
         else:
-            self.n = 200
+            self.n = 100
         self.observation_space = Discrete(self.n)
 
         # Latent state space
@@ -53,26 +53,40 @@ class Synthetic(gym.Env):
 
         # Generate latent transition probability matrix for each action!
         # All of them satisfies the regularity condition
-        self.ps = []
-        seeding_p = np.random.RandomState(seed=10)  # "local" seeding to fix the transition probability matrices
-        for a in range(self.A):
-            # p = np.random.rand(self.S, self.S)
-            p = seeding_p.rand(self.S, self.S)
-            p /= p.sum(axis=1)[:, None]
-            self.ps.append(p)
+        if 'ps' in params:
+            self.ps = env_config['ps']
+        else:
+            self.ps = []
+            seeding_p = np.random.RandomState(seed=10)  # "local" seeding to fix the transition probability matrices
+            for a in range(self.A):
+                # p = np.random.rand(self.S, self.S)
+                p = seeding_p.rand(self.S, self.S)
+                p /= p.sum(axis=1)[:, None]
+                self.ps.append(p)
 
         # Generate context emission probability for each cluster!
         # All of them satisfies the regularity condition
-        self.qs = []
-        seeding_q = np.random.RandomState(seed=20)
-        for s in range(self.S):
-            q = np.ones(self.cluster_sizes[s])
-            # q = np.random.rand(self.cluster_sizes[s])
-            # q = seeding_q.rand(self.cluster_sizes[s])
-            q /= sum(q)
-            self.qs.append(q)
+        if 'qs' in params:
+            self.qs = env_config['qs']
+            if self.qs == 'uniform':
+                self.qs = []
+                for s in range(self.S):
+                    q = np.ones(self.cluster_sizes[s])
+                    # q = np.random.rand(self.cluster_sizes[s])
+                    # q = seeding_q.rand(self.cluster_sizes[s])
+                    q /= sum(q)
+                    self.qs.append(q)
+        else:
+            self.qs = []
+            seeding_q = np.random.RandomState(seed=20)
+            for s in range(self.S):
+                # q = np.random.rand(self.cluster_sizes[s])
+                q = seeding_q.rand(self.cluster_sizes[s])
+                q /= sum(q)
+                self.qs.append(q)
 
     def compute_divergence(self):
+        # to be done by Junghyun
         return None
 
     def step(self, action):
@@ -84,14 +98,14 @@ class Synthetic(gym.Env):
 
         self.h += 1
         P = self.ps[action]
-        self.state = np.random.choice(range(self.latent_space.n), p=P[self.state])
+        self.state = np.random.choice(range(self.S), p=P[self.state])
         q = self.qs[self.state]
         obs = self.make_obs(self.state, q)
         return obs, done
 
-    # Uniformly random emission probability
+    # Emission probability
     def make_obs(self, state, q):
-        return np.random.choice(range(self.cluster_sizes[state]), p=q)
+        return self.partitions[state].start + np.random.choice(range(self.cluster_sizes[state]), p=q)
 
     def reset(self):
         if not self.initialized:
@@ -104,7 +118,7 @@ class Synthetic(gym.Env):
 
 
 def generate_trajectories(T, env):
-    # Gather offline(logged) data
+    # Gather offline(logged) data, using uniformly random policy
     # env.init()
     trajectories = [[] for _ in range(T)]
     for t in range(T):
