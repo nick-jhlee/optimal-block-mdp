@@ -90,7 +90,8 @@ def init_spectral(env, trajectories):
         # Collect empirical transition matrices
         transition_matrix_a = np.zeros([n, n])
         visitations_a = np.zeros([n])
-        for x in tqdm(range(n)):
+        for x in range(n):
+        # for x in tqdm(range(n)):
             visitations_a[x] = count_visitation(x, a, trajectories)
             for y in range(n):
                 transition_matrix_a[x, y] = count_transition(x, a, y, trajectories)
@@ -143,7 +144,8 @@ def likelihood_improvement(env, trajectories, f_1, f, num_iter=None):
     errors = []
     fs = []
 
-    for _ in tqdm(range(num_iter)):
+    for _ in range(num_iter):
+    # for _ in tqdm(range(num_iter)):
         # estimated latent transition matrices
         Ns = [np.zeros((S, S)) for _ in range(A)]
         for a in range(A):
@@ -197,7 +199,6 @@ def likelihood_improvement(env, trajectories, f_1, f, num_iter=None):
 
 if __name__ == '__main__':
     n = 100
-
     A = 2
     H = 100
     T = int(np.ceil(n * A * (np.log(n * A) ** 1.1)) / H)
