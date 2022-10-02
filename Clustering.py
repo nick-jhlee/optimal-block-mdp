@@ -1,62 +1,56 @@
-import numpy.linalg as LA
 from scipy.optimize import minimize
 from math import inf
-from sklearn.preprocessing import normalize
 from pyclustering.cluster.kmedians import kmedians
-from itertools import permutations
+from itertools import product, permutations
 
 from tqdm import tqdm
 from Synthetic import *
 
 
-def count_transition(x, a, y, trajectories):
-    cnt = 0
+def empirical_transitions(env, trajectories):
+    n, A = env.n, env.A
     H = len(trajectories[0])
+    output = [cp.zeros((n, n)) for _ in range(A)]
     for trajectory in trajectories:
-        cnt += sum(1 for i in range(H - 2) if i % 2 == 0 and trajectory[i:i + 3] == [x, a, y])
-    return cnt
-
-def count_visitation(x, a, trajectories):
-    cnt = 0
-    H = len(trajectories[0])
-    for trajectory in trajectories:
-        cnt += sum(1 for i in range(H - 1) if i % 2 == 0 and trajectory[i:i + 2] == [x, a])
-    return cnt
+        for i in range(0, H - 2, 2):
+            output[trajectory[i + 1]][trajectory[i]][trajectory[i + 2]] += 1
+    return output
 
 
-def count_transition_latent(s, a, v, trajectories, f):
-    cnt = 0
-    H = len(trajectories[0])
-    for trajectory in trajectories:
-        cnt += sum(1 for i in range(H - 2) if i % 2 == 0 and f[trajectory[i]] == s and trajectory[i + 1] == a and f[
-            trajectory[i + 2]] == v)
-    return cnt
+def cluster_list(f, s):
+    xs_s = []
+    for item in list(f.items()):
+        if item[1] == s:
+            xs_s.append(item[0])
+    return xs_s
 
 
-def count_transition_mixed1(x, a, s, trajectories, f):
-    cnt = 0
-    H = len(trajectories[0])
-    for trajectory in trajectories:
-        cnt += sum(1 for i in range(H - 2) if i % 2 == 0 and trajectory[i] == x and trajectory[i + 1] == a and f[
-            trajectory[i + 2]] == s)
-    return cnt
+def empirical_latent_transitions(env, empirical_transitions, f):
+    S, A = env.S, env.A
+    output = [cp.zeros((S, S)) for _ in range(A)]
+
+    clustered_contexts = []
+    for s in range(S):
+        clustered_contexts.append(cluster_list(f, s))
+
+    for a in range(A):
+        for s, v in product(range(S), repeat=2):
+            xs_s, xs_v = clustered_contexts[s], clustered_contexts[v]
+            output[a][s][v] = cp.sum(empirical_transitions[a][cp.ix_(xs_s, xs_v)])
+    return output
 
 
-def count_transition_mixed2(s, a, x, trajectories, f):
-    cnt = 0
-    H = len(trajectories[0])
-    for trajectory in trajectories:
-        cnt += sum(1 for i in range(H - 2) if
-                   i % 2 == 0 and f[trajectory[i]] == s and trajectory[i + 1] == a and trajectory[i + 2] == x)
-    return cnt
+def count_transition_mixed1(x, s, empirical_transition_a, f):
+    return cp.sum(empirical_transition_a[cp.ix_([x], cluster_list(f, s))])
+
+
+def count_transition_mixed2(s, x, empirical_transition_a, f):
+    return cp.sum(empirical_transition_a[cp.ix_(cluster_list(f, s), [x])])
 
 
 def low_rank(N, r=1):
-    U, S, V = LA.svd(N, full_matrices=False)
-    Nr = np.zeros((len(U), len(V)))
-    for i in range(r):
-        Nr += S[i] * np.outer(U.T[i], V[i])
-    return Nr
+    U, S, V = cp.linalg.svd(N, full_matrices=False)
+    return cp.matmul(U[:, 0:r], cp.matmul(cp.diag(S[0:r]), V[0:r, :]))
 
 
 def count_error(f, f_1, perm, n):
@@ -74,56 +68,50 @@ def error_rate(f, f_1, n, S):
         for s in range(S):
             perm[s] = perm_[s]
         error = min(error, count_error(f, f_1, perm, n))
-
     return error / n
 
 
-
-def init_spectral(env, trajectories):
+def init_spectral(env, T, transition_matrices_before):
     n, S, A, H = env.n, env.S, env.A, env.H
-    T = len(trajectories)
 
     # Collect trimmed, low-rank approx, empirical transition matrices
-    transition_matrices_before = []
     transition_matrices = []
     for a in range(A):
         # Collect empirical transition matrices
-        transition_matrix_a = np.zeros([n, n])
-        visitations_a = np.zeros([n])
-        for x in range(n):
-        # for x in tqdm(range(n)):
-            visitations_a[x] = count_visitation(x, a, trajectories)
-            for y in range(n):
-                transition_matrix_a[x, y] = count_transition(x, a, y, trajectories)
+        transition_matrix_a = transition_matrices_before[a]
         # Trimming!
         ratio = (T * H) / (n * A)
-        num_trimmed = int(np.floor(n * np.exp(- ratio * np.log(ratio))))
+        num_trimmed = int(cp.floor(n * cp.exp(- ratio * cp.log(ratio))))
         if num_trimmed > 0:
-            contexts_ordered = np.argsort(visitations_a)
+            contexts_ordered = cp.argsort(cp.sum(transition_matrix_a, axis=1))
             contexts_trimmed = contexts_ordered[-num_trimmed:]
-            for x, y in zip(contexts_trimmed, contexts_trimmed):
-                transition_matrix_a[x][y] = 0
+            transition_matrix_a[contexts_trimmed, contexts_trimmed] = 0
 
-        transition_matrices_before.append(transition_matrix_a)
         # Low-rank approximation
         transition_matrices.append(low_rank(transition_matrix_a, r=S))
 
-    M_in = np.concatenate(tuple(transition_matrices), axis=1)
-    M_out = np.concatenate(tuple(transition_matrices), axis=0).T
-    M = np.concatenate((M_in, M_out), axis=1)
+    M_in = cp.concatenate(tuple(transition_matrices), axis=1)
+    M_out = cp.concatenate(tuple(transition_matrices), axis=0).T
+    M = cp.concatenate((M_in, M_out), axis=1)
 
     # l1-normalize rows
     row_sums = M.sum(axis=1)
     row_sums[row_sums == 0] = 1
-    M = M / row_sums[:, np.newaxis]
+    M = M / row_sums[:, cp.newaxis]
     # M = normalize(M, norm='l1', axis=1)
 
     # S-median clustering to the rows
     initial_medians = M[:S, :]
-    # initial_medians = np.random.randn(S, 2*n*A)
-    kmedians_instance = kmedians(M, initial_medians)
-    kmedians_instance.process()
-    clusters = kmedians_instance.get_clusters()
+    # initial_medians = cp.random.randn(S, 2*n*A)
+
+    # numpy + pyclustering
+    if platform == "darwin":
+        kmedians_instance = kmedians(M, initial_medians)
+        kmedians_instance.process()
+        clusters = kmedians_instance.get_clusters()
+    # cupy + manual Implementation
+    else:
+        clusters = weighted_kmedians(M)
 
     f_1 = {}
     for x in range(n):
@@ -134,24 +122,19 @@ def init_spectral(env, trajectories):
     return f_1
 
 
-def likelihood_improvement(env, trajectories, f_1, f, num_iter=None):
+def likelihood_improvement(env, transition_matrices_before, f_1, f, num_iter=None):
     # likelihood_improvement
     n, S, A, H = env.n, env.S, env.A, env.H
 
     f_final = f_1
     if num_iter is None:
-        num_iter = int(np.floor(np.log(n * A)))
+        num_iter = int(cp.floor(cp.log(n * A)))
     errors = []
     fs = []
 
     for _ in range(num_iter):
-    # for _ in tqdm(range(num_iter)):
-        # estimated latent transition matrices
-        Ns = [np.zeros((S, S)) for _ in range(A)]
-        for a in range(A):
-            for s in range(S):
-                for k in range(S):
-                    Ns[a][s][k] = count_transition_latent(s, a, k, trajectories, f_final)
+        # create empirical latent transition matrices
+        Ns = empirical_latent_transitions(env, transition_matrices_before, f_final)
 
         # likelihood improvement
         f_ = {}
@@ -161,12 +144,12 @@ def likelihood_improvement(env, trajectories, f_1, f, num_iter=None):
                 # N2 = number of visitations to j
                 N2 = 0
                 for a in range(A):
-                    tmp = np.sum(Ns[a], axis=0)
+                    tmp = cp.sum(Ns[a], axis=0)
                     N2 += tmp[j]
                 likelihood = 0
                 for a in range(A):
                     # N1 = number of visitations from (j, a)
-                    tmp = np.sum(Ns[a], axis=1)
+                    tmp = cp.sum(Ns[a], axis=1)
                     N1 = tmp[j]
                     # degenerate case
                     if N1 == 0 or N2 == 0:
@@ -180,16 +163,16 @@ def likelihood_improvement(env, trajectories, f_1, f, num_iter=None):
                                 likelihood = -inf
                                 continue
                             # number of visitations (x, a) -> s
-                            N3 = count_transition_mixed1(x, a, s, trajectories, f_final)
+                            N3 = count_transition_mixed1(x, s, transition_matrices_before[a], f)
                             # number of visitations (s, a) -> x
-                            N4 = count_transition_mixed2(s, a, x, trajectories, f_final)
+                            N4 = count_transition_mixed2(s, x, transition_matrices_before[a], f)
 
                             # compute likelihood
-                            likelihood += (N3 * np.log(p_estimated)) + (N4 * np.log(p_bwd_estimated))
+                            likelihood += (N3 * cp.log(p_estimated)) + (N4 * cp.log(p_bwd_estimated))
                 likelihoods.append(likelihood)
             # new cluster
             # print(likelihoods)
-            f_[x] = np.argmax(likelihoods)
+            f_[x] = cp.argmax(likelihoods)
             fs.append(f_)
         f_final = f_
         errors.append(error_rate(f, f_final, env.n, env.S))
@@ -197,14 +180,19 @@ def likelihood_improvement(env, trajectories, f_1, f, num_iter=None):
     return f_final, errors
 
 
+def weighted_kmedians(M):
+    clusters = None
+    return clusters
+
+
 if __name__ == '__main__':
     n = 100
     A = 2
     H = 100
-    T = int(np.ceil(n * A * (np.log(n * A) ** 1.1)) / H)
+    T = int(cp.ceil(n * A * (cp.log(n * A) ** 1.1)) / H)
 
     env_config = {'n': n, 'H': H, 'S:': 2, 'A': A,
-                  'ps': [np.array([[3 / 4, 1 / 4], [1 / 4, 3 / 4]]), np.array([[1 / 2, 1 / 2], [1 / 2, 1 / 2]])],
+                  'ps': [cp.array([[3 / 4, 1 / 4], [1 / 4, 3 / 4]]), cp.array([[1 / 2, 1 / 2], [1 / 2, 1 / 2]])],
                   'qs': 'uniform'}
     env = Synthetic(env_config)
     # true clusters
@@ -215,14 +203,16 @@ if __name__ == '__main__':
             f[x] = s
     # obtain trajectories
     trajectories = generate_trajectories(T, env)
+    # obtain transition matrices
+    transition_matrices = empirical_transitions(env, trajectories)
 
     # initial spectral clustering
-    f_1 = init_spectral(env, trajectories)
+    f_1 = init_spectral(env, T, transition_matrices)
     init_err_rate = error_rate(f, f_1, env.n, env.S)
     print("Error rate after initial clustering is ", init_err_rate)
 
     # likelihood_improvement
     # f_final, errors = likelihood_improvement(env, trajectories, f_1, f, num_iter=10)
-    f_final, errors = likelihood_improvement(env, trajectories, f_1, f, num_iter=None)
+    f_final, errors = likelihood_improvement(env, transition_matrices, f_1, f, num_iter=None)
     print("Final error rate is ", errors[-1])
     print("Errors along the improvement steps: ", errors)

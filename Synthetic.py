@@ -1,4 +1,9 @@
-import numpy as np
+from sys import platform
+if platform == "darwin":
+    import numpy as cp
+else:
+    import cupy as cp
+
 import gym
 from gym.spaces import Discrete
 
@@ -57,9 +62,8 @@ class Synthetic(gym.Env):
             self.ps = env_config['ps']
         else:
             self.ps = []
-            seeding_p = np.random.RandomState(seed=10)  # "local" seeding to fix the transition probability matrices
+            seeding_p = cp.random.RandomState(seed=10)  # "local" seeding to fix the transition probability matrices
             for a in range(self.A):
-                # p = np.random.rand(self.S, self.S)
                 p = seeding_p.rand(self.S, self.S)
                 p /= p.sum(axis=1)[:, None]
                 self.ps.append(p)
@@ -71,16 +75,16 @@ class Synthetic(gym.Env):
             if self.qs == 'uniform':
                 self.qs = []
                 for s in range(self.S):
-                    q = np.ones(self.cluster_sizes[s])
-                    # q = np.random.rand(self.cluster_sizes[s])
+                    q = cp.ones(self.cluster_sizes[s])
+                    # q = cp.random.rand(self.cluster_sizes[s])
                     # q = seeding_q.rand(self.cluster_sizes[s])
                     q /= sum(q)
                     self.qs.append(q)
         else:
             self.qs = []
-            seeding_q = np.random.RandomState(seed=20)
+            seeding_q = cp.random.RandomState(seed=20)
             for s in range(self.S):
-                # q = np.random.rand(self.cluster_sizes[s])
+                # q = cp.random.rand(self.cluster_sizes[s])
                 q = seeding_q.rand(self.cluster_sizes[s])
                 q /= sum(q)
                 self.qs.append(q)
@@ -98,14 +102,16 @@ class Synthetic(gym.Env):
 
         self.h += 1
         P = self.ps[action]
-        self.state = np.random.choice(range(self.S), p=P[self.state])
+        tmp = cp.random.choice(range(self.S), size=1, p=P[self.state])
+        self.state = int(tmp[0])
         q = self.qs[self.state]
         obs = self.make_obs(self.state, q)
         return obs, done
 
     # Emission probability
     def make_obs(self, state, q):
-        return self.partitions[state].start + np.random.choice(range(self.cluster_sizes[state]), p=q)
+        tmp = cp.random.choice(range(self.cluster_sizes[state]), size=1, p=q)
+        return self.partitions[state].start + int(tmp[0])
 
     def reset(self):
         if not self.initialized:
