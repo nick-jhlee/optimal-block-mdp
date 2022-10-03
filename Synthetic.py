@@ -2,7 +2,8 @@ from sys import platform
 if platform == "darwin":
     import numpy as cp
 else:
-    import cupy as cp
+    import numpy as cp
+    # import cupy as cp
 
 import gym
 from gym.spaces import Discrete

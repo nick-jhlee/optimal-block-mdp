@@ -9,7 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-num_repeats = 20
+num_repeats = 100
 verbose = False
 
 n = 100
@@ -17,7 +17,7 @@ n = 100
 # H = int(np.ceil(n / 2))
 H = n
 # range of T
-T_range = cp.array(range(5, 50, 5))
+T_range = range(5, 50, 5)
 T_num = len(T_range)
 
 # number of actions, clusters

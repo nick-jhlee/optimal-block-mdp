@@ -9,7 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-num_repeats = 20
+num_repeats = 100
 verbose = False
 
 n = 100
@@ -21,7 +21,7 @@ T = 30
 S, A = 2, 3
 
 # range of epsilon
-eps_range = cp.arange(0, 0.5, 0.05)
+eps_range = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45]
 eps_num = len(eps_range)
 
 dfs = []

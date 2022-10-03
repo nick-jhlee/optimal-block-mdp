@@ -9,7 +9,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-num_repeats = 20
+num_repeats = 100
 verbose = False
 
 # range of n, number of contexts

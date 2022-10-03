@@ -105,7 +105,8 @@ def init_spectral(env, T, transition_matrices_before):
     # initial_medians = cp.random.randn(S, 2*n*A)
 
     # numpy + pyclustering
-    if platform == "darwin":
+    if True:
+    # if platform == "darwin":
         kmedians_instance = kmedians(M, initial_medians)
         kmedians_instance.process()
         clusters = kmedians_instance.get_clusters()
