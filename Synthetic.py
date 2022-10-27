@@ -1,4 +1,6 @@
+import math
 from sys import platform
+
 if platform == "darwin":
     import numpy as cp
 else:
@@ -90,6 +92,13 @@ class Synthetic(gym.Env):
                 q /= sum(q)
                 self.qs.append(q)
 
+        # latent state decoding function
+        self.f = {}
+        for s in range(self.S):
+            cluster = self.partitions[s]
+            for x in range(cluster.start, cluster.start + cluster.n):
+                self.f[x] = s
+
     def compute_divergence(self):
         # to be done by Junghyun
         return None
@@ -105,13 +114,12 @@ class Synthetic(gym.Env):
         P = self.ps[action]
         tmp = cp.random.choice(range(self.S), size=1, p=P[self.state])
         self.state = int(tmp[0])
-        q = self.qs[self.state]
-        obs = self.make_obs(self.state, q)
+        obs = self.make_obs(self.state)
         return obs, done
 
     # Emission probability
-    def make_obs(self, state, q):
-        tmp = cp.random.choice(range(self.cluster_sizes[state]), size=1, p=q)
+    def make_obs(self, state):
+        tmp = cp.random.choice(range(self.cluster_sizes[state]), size=1, p=self.qs[self.state])
         return self.partitions[state].start + int(tmp[0])
 
     def reset(self):
@@ -119,8 +127,7 @@ class Synthetic(gym.Env):
             raise Exception("Env not yet initialized!")
         self.h = 0
         self.state = self.latent_space.sample()  # uniformly random initial distribution over latent space
-        q = self.qs[self.state]
-        obs = self.make_obs(self.state, q)
+        obs = self.make_obs(self.state)
         return obs
 
 
@@ -141,8 +148,36 @@ def generate_trajectories(T, env):
     return trajectories
 
 
+def corrupt(env, trajectories, delta1=0.01, delta2=0.1, delta3=0.2):
+    if delta1 == 0 or (delta2 == 0 and delta3 == 0):
+        return trajectories
+    T = len(trajectories)
+    corrupt_idx = cp.random.choice(range(T), math.floor(delta1 * T))
+    for i in corrupt_idx:
+        trajectory = trajectories[i]
+        if delta2 > 0:
+            corrupt_X = cp.random.choice(range(env.H), math.floor(delta2 * env.H))
+            for h in corrupt_X:
+                states = list(range(env.S))
+                x = trajectory[2 * h]
+                states.remove(env.f[x])
+                corrupt_s = cp.random.choice(states)
+                trajectory[2 * h] = env.make_obs(corrupt_s)
+        if delta3 > 0:
+            corrupt_A = cp.random.choice(range(env.H), math.floor(delta3 * env.H))
+            for h in corrupt_A:
+                actions = list(range(env.A))
+                a = trajectory[2 * h + 1]
+                actions.remove(a)
+                corrupt_a = cp.random.choice(actions)
+                trajectory[2 * h + 1] = corrupt_a
+        trajectories[i] = trajectory
+    return trajectories
+
+
 if __name__ == '__main__':
     T = 10
     env = Synthetic()
     trajectories = generate_trajectories(T, env)
     print(trajectories)
+    print(corrupt(env, trajectories, delta1=0.1, delta2=0.2, delta3=0.3))

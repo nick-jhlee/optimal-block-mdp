@@ -53,22 +53,22 @@ def low_rank(N, r=1):
     return cp.matmul(U[:, 0:r], cp.matmul(cp.diag(S[0:r]), V[0:r, :]))
 
 
-def count_error(f, f_1, perm, n):
+def count_error(env, f_1, perm):
     cnt = 0
-    for x in range(n):
-        if f[x] != perm[f_1[x]]:
+    for x in range(env.n):
+        if env.f[x] != perm[f_1[x]]:
             cnt += 1
     return cnt
 
 
-def error_rate(f, f_1, n, S):
-    error = n
-    for perm_ in permutations(range(S)):
+def error_rate(env, f_1):
+    error = env.n
+    for perm_ in permutations(range(env.S)):
         perm = {}
-        for s in range(S):
+        for s in range(env.S):
             perm[s] = perm_[s]
-        error = min(error, count_error(f, f_1, perm, n))
-    return error / n
+        error = min(error, count_error(env, f_1, perm))
+    return error / env.n
 
 
 def init_spectral(env, T, transition_matrices_before):
@@ -123,9 +123,9 @@ def init_spectral(env, T, transition_matrices_before):
     return f_1
 
 
-def likelihood_improvement(env, transition_matrices_before, f_1, f, num_iter=None):
+def likelihood_improvement(env, transition_matrices_before, f_1, num_iter=None):
     # likelihood_improvement
-    n, S, A, H = env.n, env.S, env.A, env.H
+    n, S, A, H, f = env.n, env.S, env.A, env.H, env.f
 
     f_final = f_1
     if num_iter is None:
@@ -176,7 +176,7 @@ def likelihood_improvement(env, transition_matrices_before, f_1, f, num_iter=Non
             f_[x] = cp.argmax(likelihoods)
             fs.append(f_)
         f_final = f_
-        errors.append(error_rate(f, f_final, env.n, env.S))
+        errors.append(error_rate(env, f_final))
 
     return f_final, errors
 
