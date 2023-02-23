@@ -13,39 +13,41 @@ def main(S, A, n, num_repeats, param_range, param_name):
     for i, param in enumerate(param_range):
         if param_name == 'eta':
             eta = round(param, 2)
+            T = 30
             H = n
-            T = 20
 
             exp_num = 3
         else:
             # symmetric binary case
-            eta = 2.00
+            eta = 4.0
             if param_name == 'T':
                 T = param
                 H = n
 
                 exp_num = 1
             elif param_name == 'H':
+                T = 30
                 H = param
-                T = 20
 
                 exp_num = 2
             elif 'delta' in param_name:
-                eta = 2.0
+                T = 30
                 H = n
-                T = 20
 
                 exp_num = 3 + int(param_name[-1])
 
+                # delta1: proportion of trajectories to be corrupted
+                # delta2: proportion of contexts to be corrupted, per trajectory
+                # delta3: proportion of actions to be corrupted, per trajectory
                 if exp_num == 4:
                     delta1 = param
-                    delta2, delta3 = 0, 0
+                    delta2, delta3 = 0.3, 0.3
                 elif exp_num == 5:
                     delta2 = param
-                    delta1, delta3 = 0, 0
+                    delta1, delta3 = 0.3, 0.3
                 elif exp_num == 6:
                     delta3 = param
-                    delta1, delta2 = 0, 0
+                    delta1, delta2 = 0.3, 0.3
                 else:
                     raise NotImplementedError(f"Experiment {exp_num} not implemented!")
             else:
@@ -101,8 +103,8 @@ if __name__ == '__main__':
 
     # Experiment 5. Varying delta2
     delta2_range = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    main(S, A, n, num_repeats, delta2_range, 'delta1')
+    main(S, A, n, num_repeats, delta2_range, 'delta2')
 
     # Experiment 6. Varying delta3
     delta3_range = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    main(S, A, n, num_repeats, delta3_range, 'delta1')
+    main(S, A, n, num_repeats, delta3_range, 'delta3')

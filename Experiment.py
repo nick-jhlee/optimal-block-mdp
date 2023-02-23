@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def simulate_single_run(env, T, delta1=0, delta2=0, delta3=0):
+def simulate_single_run(env, T, delta1, delta2, delta3):
     # obtain (possibly corrupted) trajectories
     trajectories = corrupt(env, generate_trajectories(T, env), delta1=delta1, delta2=delta2, delta3=delta3)
     # obtain transition matrices
@@ -36,9 +36,13 @@ def track_job(job, exp_description, update_interval=3):
         time.sleep(update_interval)
 
 
-def simulate(env, T, num_repeats, exp_description, delta1=0, delta2=0, delta3=0):
+def simulate(env, T, num_repeats, exp_description, delta1, delta2, delta3):
     def F(repeat):
-        result = simulate_single_run(env, T, delta1, delta2, delta3)
+        while True:
+            try:
+                result = simulate_single_run(env, T, delta1, delta2, delta3)
+            except:
+                pass
 
         # # print process id
         # print(f"Finished: {multiprocess.process.current_process()}, TH = {T * env.H}")
@@ -72,15 +76,15 @@ def plot_final_discrete(final_means, final_stds, xs, title, xlabel, legends, fna
     plt.close()
 
 
-def plot(dfs, exp_num, title_str):
+def plot(dfs, exp_num, param_name):
     # plot and save
     cdf = pd.concat(dfs)
     mdf = pd.melt(cdf, id_vars=["param"], var_name="Algorithm", value_name="error rate")
 
     fig, ax = plt.subplots()
-    sns.boxplot(x="param", y="error rate", hue="Algorithm", data=mdf, ax=ax, whis=1.1)
+    sns.boxplot(x="param", y="error rate", hue="Algorithm", data=mdf, ax=ax, whis=1.1).set(xlabel=param_name)
     # sns.stripplot(x="H", y="error rate", hue="Algorithm", data=mdf, dodge=True, ax=ax, legend=False)
-    fig.suptitle(title_str)
+    fig.suptitle(f"Varying {param_name}")
     plt.savefig(f"results/plot_exp{exp_num}.pdf", dpi=500)
 
     # plt.show()
