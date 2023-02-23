@@ -92,7 +92,7 @@ if __name__ == '__main__':
     # Experiment 2. Varying H
     H_range = range(int(n / 5), n + 10, 10)
     main(S, A, n, num_repeats, H_range, 'H')
-    
+
     # Experiment 3. Varying eta
     eta_range = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0]
     main(S, A, n, num_repeats, eta_range, 'eta')

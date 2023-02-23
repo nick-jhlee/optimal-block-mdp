@@ -41,6 +41,7 @@ def simulate(env, T, num_repeats, exp_description, delta1, delta2, delta3):
         while True:
             try:
                 result = simulate_single_run(env, T, delta1, delta2, delta3)
+                break
             except:
                 pass
 
